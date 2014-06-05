@@ -19,13 +19,6 @@
 		<developerConnection>${scm.github.rootPath}snappy.git</developerConnection>
 	</scm>
 
-	<distributionManagement>
-		<repository>
-			<id>nexus</id>
-			<url>http://dev1/nexus/content/repositories/thirdparty/</url>
-		</repository>
-	</distributionManagement>
-
 	<licenses>
 		<license>
 			<name>The Apache Software License, Version 2.0</name>
@@ -69,19 +62,10 @@
 					<exclude>**/*.java</exclude>
 				</excludes>
 			</testResource>
-			<testResource>
-				<directory>src/test/resources</directory>
-			</testResource>
 		</testResources>
 
 		<plugins>
-			<plugin>
-				<artifactId>maven-resources-plugin</artifactId>
-				<configuration>
-					<encoding>UTF-8</encoding>
-				</configuration>
-			</plugin>
-
+			
 			<plugin>
 				<artifactId>maven-compiler-plugin</artifactId>
 			</plugin>
@@ -149,6 +133,41 @@
 						<manifestFile>${project.build.directory}/META-INF/MANIFEST.MF</manifestFile>
 					</archive>
 				</configuration>
+			</plugin>
+			
+			<plugin>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<!--configuration>
+					<excludes>
+						<exclude>**/*.CalgaryTest.java</exclude>
+					</excludes>
+				</configuration-->
+			</plugin>
+			
+			<!-- Copy test configuration files that depend on the environment -->
+			<plugin>
+				<artifactId>maven-resources-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>test-files</id>
+						<phase>pre-integration-test</phase>
+						<goals>
+							<goal>copy-resources</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${test.int.outputDirectory}</outputDirectory>
+							<resources>
+								<resource>
+									<directory>${test.unit.sources}</directory>
+									<filtering>false</filtering>
+									<excludes>
+										<exclude>**/*.java</exclude>
+									</excludes>
+								</resource>
+							</resources>
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
             
 			<!--            <plugin>
