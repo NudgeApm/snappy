@@ -7,16 +7,11 @@ import static org.xerial.snappy.SnappyFramed.COMPRESSED_DATA_FLAG;
 import static org.xerial.snappy.SnappyFramed.HEADER_BYTES;
 import static org.xerial.snappy.SnappyFramed.UNCOMPRESSED_DATA_FLAG;
 import static org.xerial.snappy.SnappyFramed.maskedCrc32c;
-import static org.xerial.snappy.SnappyFramed.releaseDirectByteBuffer;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.channels.Channels;
 import java.nio.channels.ClosedChannelException;
-import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 
 /**
@@ -54,14 +49,12 @@ public final class SnappyFramedOutputStream extends OutputStream implements
      */
     public static final double DEFAULT_MIN_COMPRESSION_RATIO = 0.85d;
 
-    private final ByteBuffer headerBuffer = ByteBuffer.allocate(8).order(
-            ByteOrder.LITTLE_ENDIAN);
+    // private final int blockSize;
     private final ByteBuffer buffer;
-    private final ByteBuffer directInputBuffer;
-    private final ByteBuffer outputBuffer;
+    private final byte[] outputBuffer;
     private final double minCompressionRatio;
 
-    private final WritableByteChannel out;
+    private final OutputStream out;
 
     // private int position;
     private boolean closed;
@@ -95,41 +88,6 @@ public final class SnappyFramedOutputStream extends OutputStream implements
      */
     public SnappyFramedOutputStream(OutputStream out, int blockSize,
             double minCompressionRatio) throws IOException {
-        this(Channels.newChannel(out), blockSize, minCompressionRatio);
-    }
-
-    /**
-     * Creates a new {@link SnappyFramedOutputStream} using the
-     * {@link #DEFAULT_BLOCK_SIZE} and {@link #DEFAULT_MIN_COMPRESSION_RATIO}.
-     * 
-     * @param out
-     *            The underlying {@link WritableByteChannel} to write to. Must
-     *            not be {@code null}.
-     * @since 1.1.1
-     * @throws IOException
-     */
-    public SnappyFramedOutputStream(WritableByteChannel out) throws IOException {
-        this(out, DEFAULT_BLOCK_SIZE, DEFAULT_MIN_COMPRESSION_RATIO);
-    }
-
-    /**
-     * Creates a new {@link SnappyFramedOutputStream} instance.
-     * 
-     * @param out
-     *            The underlying {@link WritableByteChannel} to write to. Must
-     *            not be {@code null}.
-     * @param blockSize
-     *            The block size (of raw data) to compress before writing frames
-     *            to <i>out</i>. Must be in (0, 65536].
-     * @param minCompressionRatio
-     *            Defines the minimum compression ratio (
-     *            {@code compressedLength / rawLength}) that must be achieved to
-     *            write the compressed data. This must be in (0, 1.0].
-     * @since 1.1.1
-     * @throws IOException
-     */
-    public SnappyFramedOutputStream(WritableByteChannel out, int blockSize,
-            double minCompressionRatio) throws IOException {
         if (out == null) {
             throw new NullPointerException();
         }
@@ -147,9 +105,7 @@ public final class SnappyFramedOutputStream extends OutputStream implements
         this.out = out;
         this.minCompressionRatio = minCompressionRatio;
         buffer = ByteBuffer.allocate(blockSize);
-        directInputBuffer = ByteBuffer.allocateDirect(blockSize);
-        outputBuffer = ByteBuffer.allocateDirect(Snappy
-                .maxCompressedLength(blockSize));
+        outputBuffer = new byte[Snappy.maxCompressedLength(blockSize)];
 
         writeHeader(out);
     }
@@ -162,14 +118,13 @@ public final class SnappyFramedOutputStream extends OutputStream implements
      *            The underlying {@link OutputStream}.
      * @throws IOException
      */
-    private void writeHeader(WritableByteChannel out) throws IOException {
-        out.write(ByteBuffer.wrap(HEADER_BYTES));
+    private void writeHeader(OutputStream out) throws IOException {
+        out.write(HEADER_BYTES);
     }
 
     /**
      * {@inheritDoc}
      */
-    @Override
     public boolean isOpen() {
         return !closed;
     }
@@ -191,30 +146,12 @@ public final class SnappyFramedOutputStream extends OutputStream implements
             throw new IOException("Stream is closed");
         }
 
-        if (input == null) {
-            throw new NullPointerException();
-        } else if ((offset < 0) || (offset > input.length) || (length < 0)
-                || ((offset + length) > input.length)
-                || ((offset + length) < 0)) {
-            throw new IndexOutOfBoundsException();
-        }
-
-        while (length > 0) {
-            if (buffer.remaining() <= 0) {
-                flushBuffer();
-            }
-
-            final int toPut = Math.min(length, buffer.remaining());
-            buffer.put(input, offset, toPut);
-            offset += toPut;
-            length -= toPut;
-        }
+        write(ByteBuffer.wrap(input, offset, length));
     }
 
     /**
      * {@inheritDoc}
      */
-    @Override
     public int write(ByteBuffer src) throws IOException {
         if (closed) {
             throw new ClosedChannelException();
@@ -251,93 +188,13 @@ public final class SnappyFramedOutputStream extends OutputStream implements
         return srcLength;
     }
 
-    /**
-     * Transfers all the content from <i>is</i> to this {@link OutputStream}.
-     * This potentially limits the amount of buffering required to compress
-     * content.
-     * 
-     * @param is
-     *            The source of data to compress.
-     * @return The number of bytes read from <i>is</i>.
-     * @throws IOException
-     * @since 1.1.1
-     */
-    public long transferFrom(InputStream is) throws IOException {
-        if (closed) {
-            throw new ClosedChannelException();
-        }
-
-        if (is == null) {
-            throw new NullPointerException();
-        }
-
-        if (buffer.remaining() == 0) {
-            flushBuffer();
-        }
-
-        assert buffer.hasArray();
-        final byte[] bytes = buffer.array();
-
-        final int arrayOffset = buffer.arrayOffset();
-        long totTransfered = 0;
-        int read;
-        while ((read = is.read(bytes, arrayOffset + buffer.position(),
-                buffer.remaining())) != -1) {
-            buffer.position(buffer.position() + read);
-
-            if (buffer.remaining() == 0) {
-                flushBuffer();
-            }
-
-            totTransfered += read;
-        }
-
-        return totTransfered;
-    }
-
-    /**
-     * Transfers all the content from <i>rbc</i> to this
-     * {@link WritableByteChannel}. This potentially limits the amount of
-     * buffering required to compress content.
-     * 
-     * @param rbc
-     *            The source of data to compress.
-     * @return The number of bytes read from <i>rbc</i>.
-     * @throws IOException
-     * @since 1.1.1
-     */
-    public long transferFrom(ReadableByteChannel rbc) throws IOException {
-        if (closed) {
-            throw new ClosedChannelException();
-        }
-
-        if (rbc == null) {
-            throw new NullPointerException();
-        }
-
-        if (buffer.remaining() == 0) {
-            flushBuffer();
-        }
-
-        long totTransfered = 0;
-        int read;
-        while ((read = rbc.read(buffer)) != -1) {
-            if (buffer.remaining() == 0) {
-                flushBuffer();
-            }
-
-            totTransfered += read;
-        }
-
-        return totTransfered;
-    }
-
     @Override
     public final void flush() throws IOException {
         if (closed) {
             throw new IOException("Stream is closed");
         }
         flushBuffer();
+        out.flush();
     }
 
     @Override
@@ -350,9 +207,6 @@ public final class SnappyFramedOutputStream extends OutputStream implements
             out.close();
         } finally {
             closed = true;
-            
-            releaseDirectByteBuffer(directInputBuffer);
-            releaseDirectByteBuffer(outputBuffer);
         }
     }
 
@@ -390,26 +244,31 @@ public final class SnappyFramedOutputStream extends OutputStream implements
         final int length = buffer.remaining();
 
         // crc is based on the user supplied input data
-        final int crc32c = maskedCrc32c(input, 0, length);
+        final int crc32c = calculateCRC32C(input, 0, length);
 
-        directInputBuffer.clear();
-        directInputBuffer.put(buffer);
-        directInputBuffer.flip();
+        final int compressedLength = Snappy.compress(input, 0, length,
+                outputBuffer, 0);
 
-        outputBuffer.clear();
-        Snappy.compress(directInputBuffer, outputBuffer);
-
-        final int compressedLength = outputBuffer.remaining();
-
-        // only use the compressed data if compression ratio is <= the
+        // only use the compressed data if copmression ratio is <= the
         // minCompressonRatio
         if (((double) compressedLength / (double) length) <= minCompressionRatio) {
-            writeBlock(out, outputBuffer, true, crc32c);
+            writeBlock(out, outputBuffer, 0, compressedLength, true, crc32c);
         } else {
-            // otherwise use the uncompressed data.
-            buffer.flip();
-            writeBlock(out, buffer, false, crc32c);
+            // otherwise use the uncomprssed data.
+            writeBlock(out, input, 0, length, false, crc32c);
         }
+    }
+
+    /**
+     * Calculates a masked CRC32C checksum over the data.
+     * 
+     * @param data
+     * @param offset
+     * @param length
+     * @return The CRC32 checksum.
+     */
+    private int calculateCRC32C(byte[] data, int offset, int length) {
+        return maskedCrc32c(data, offset, length);
     }
 
     /**
@@ -431,30 +290,26 @@ public final class SnappyFramedOutputStream extends OutputStream implements
      *            The calculated checksum.
      * @throws IOException
      */
-    private void writeBlock(final WritableByteChannel out, ByteBuffer data,
-            boolean compressed, int crc32c) throws IOException {
-
-        headerBuffer.clear();
-        headerBuffer.put((byte) (compressed ? COMPRESSED_DATA_FLAG
-                : UNCOMPRESSED_DATA_FLAG));
+    private void writeBlock(final OutputStream out, byte[] data, int offset,
+            int length, boolean compressed, int crc32c) throws IOException {
+        out.write(compressed ? COMPRESSED_DATA_FLAG : UNCOMPRESSED_DATA_FLAG);
 
         // the length written out to the header is both the checksum and the
         // frame
-        final int headerLength = data.remaining() + 4;
+        final int headerLength = length + 4;
 
         // write length
-        headerBuffer.put((byte) headerLength);
-        headerBuffer.put((byte) (headerLength >>> 8));
-        headerBuffer.put((byte) (headerLength >>> 16));
+        out.write(headerLength);
+        out.write(headerLength >>> 8);
+        out.write(headerLength >>> 16);
 
         // write crc32c of user input data
-        headerBuffer.putInt(crc32c);
+        out.write(crc32c);
+        out.write(crc32c >>> 8);
+        out.write(crc32c >>> 16);
+        out.write(crc32c >>> 24);
 
-        headerBuffer.flip();
-
-        // write the header
-        out.write(headerBuffer);
-        // write the raw data
-        out.write(data);
+        // write data
+        out.write(data, offset, length);
     }
 }

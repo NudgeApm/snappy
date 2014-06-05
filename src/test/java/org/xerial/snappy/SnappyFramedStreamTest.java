@@ -3,13 +3,8 @@
  */
 package org.xerial.snappy;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
-import static org.xerial.snappy.SnappyFramed.COMPRESSED_DATA_FLAG;
-import static org.xerial.snappy.SnappyFramed.HEADER_BYTES;
-import static org.xerial.snappy.SnappyFramed.UNCOMPRESSED_DATA_FLAG;
-import static org.xerial.snappy.SnappyFramed.maskedCrc32c;
+import static org.xerial.snappy.SnappyFramed.*;
+import static org.junit.Assert.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -17,8 +12,6 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.channels.Channels;
-import java.nio.channels.WritableByteChannel;
 import java.util.Arrays;
 
 import org.junit.Test;
@@ -65,7 +58,7 @@ public class SnappyFramedStreamTest {
         assertEquals(compressed.length, 37);
 
         // stream header
-        assertArrayEquals(Arrays.copyOf(compressed, 10), HEADER_BYTES);
+        assertArrayEquals(copyOf(compressed, 10), HEADER_BYTES);
 
         // flag: compressed
         assertEquals(toInt(compressed[10]), COMPRESSED_DATA_FLAG);
@@ -164,72 +157,6 @@ public class SnappyFramedStreamTest {
                 blockToStream(block));
         assertArrayEquals(toByteArray(createInputStream(inputData, false)),
                 new byte[] { 'a' });
-    }
-
-    @Test
-    public void testTransferFrom_InputStream() throws IOException {
-        final byte[] random = getRandom(0.5, 100000);
-
-        final ByteArrayOutputStream baos = new ByteArrayOutputStream(
-                random.length);
-        final SnappyFramedOutputStream sfos = new SnappyFramedOutputStream(baos);
-
-        sfos.transferFrom(new ByteArrayInputStream(random));
-
-        sfos.close();
-
-        final byte[] uncompressed = uncompress(baos.toByteArray());
-
-        assertArrayEquals(random, uncompressed);
-    }
-
-    @Test
-    public void testTransferFrom_ReadableByteChannel() throws IOException {
-        final byte[] random = getRandom(0.5, 100000);
-
-        final ByteArrayOutputStream baos = new ByteArrayOutputStream(
-                random.length);
-        final SnappyFramedOutputStream sfos = new SnappyFramedOutputStream(baos);
-
-        sfos.transferFrom(Channels.newChannel(new ByteArrayInputStream(random)));
-
-        sfos.close();
-
-        final byte[] uncompressed = uncompress(baos.toByteArray());
-
-        assertArrayEquals(random, uncompressed);
-    }
-
-    @Test
-    public void testTransferTo_OutputStream() throws IOException {
-        final byte[] random = getRandom(0.5, 100000);
-
-        final byte[] compressed = compress(random);
-        final SnappyFramedInputStream sfis = new SnappyFramedInputStream(
-                new ByteArrayInputStream(compressed));
-
-        final ByteArrayOutputStream baos = new ByteArrayOutputStream(
-                random.length);
-        sfis.transferTo(baos);
-
-        assertArrayEquals(random, baos.toByteArray());
-    }
-
-    @Test
-    public void testTransferTo_WritableByteChannel() throws IOException {
-        final byte[] random = getRandom(0.5, 100000);
-
-        final byte[] compressed = compress(random);
-        final SnappyFramedInputStream sfis = new SnappyFramedInputStream(
-                new ByteArrayInputStream(compressed));
-
-        final ByteArrayOutputStream baos = new ByteArrayOutputStream(
-                random.length);
-        final WritableByteChannel wbc = Channels.newChannel(baos);
-        sfis.transferTo(wbc);
-        wbc.close();
-
-        assertArrayEquals(random, baos.toByteArray());
     }
 
     @Test
@@ -365,9 +292,16 @@ public class SnappyFramedStreamTest {
         RandomGenerator gen = new RandomGenerator(
                 compressionRatio);
         gen.getNextPosition(length);
-        byte[] random = Arrays.copyOf(gen.data, length);
+        byte[] random = copyOf(gen.data, length);
         assertEquals(random.length, length);
         return random;
+    }
+	
+	private byte[] copyOf(byte[] original, int newLength) {
+        byte[] copy = new byte[newLength];
+        System.arraycopy(original, 0, copy, 0,
+                         Math.min(original.length, newLength));
+        return copy;
     }
     
 }

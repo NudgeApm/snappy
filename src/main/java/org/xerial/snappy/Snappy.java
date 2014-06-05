@@ -257,10 +257,10 @@ public class Snappy
      * @throws UnsupportedEncodingException
      * @throws IOException
      */
-    public static byte[] compress(String s, Charset encoding) throws IOException {
-        byte[] data = s.getBytes(encoding);
-        return compress(data);
-    }
+	//    public static byte[] compress(String s, Charset encoding) throws IOException {
+	//        byte[] data = s.getBytes(encoding);
+	//        return compress(data);
+	//    }
 
     /**
      * Get the native library version of the snappy
@@ -797,12 +797,12 @@ public class Snappy
      * @return the uncompressed data
      * @throws IOException
      */
-    public static String uncompressString(byte[] input, int offset, int length, Charset encoding) throws IOException,
-            UnsupportedEncodingException {
-        byte[] uncompressed = new byte[uncompressedLength(input, offset, length)];
-        int compressedSize = uncompress(input, offset, length, uncompressed, 0);
-        return new String(uncompressed, encoding);
-    }
+//    public static String uncompressString(byte[] input, int offset, int length, Charset encoding) throws IOException,
+//            UnsupportedEncodingException {
+//        byte[] uncompressed = new byte[uncompressedLength(input, offset, length)];
+//        int compressedSize = uncompress(input, offset, length, uncompressed, 0);
+//        return new String(uncompressed, encoding);
+//    }
 
     /**
      * Uncompress the input as a String of the given encoding
@@ -827,9 +827,9 @@ public class Snappy
      * @return the uncompressed data
      * @throws IOException
      */
-    public static String uncompressString(byte[] input, Charset encoding) throws IOException,
-            UnsupportedEncodingException {
-        byte[] uncompressed = uncompress(input);
-        return new String(uncompressed, encoding);
-    }
+//    public static String uncompressString(byte[] input, Charset encoding) throws IOException,
+//            UnsupportedEncodingException {
+//        byte[] uncompressed = uncompress(input);
+//        return new String(uncompressed, encoding);
+//    }
 }
