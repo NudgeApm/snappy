@@ -5,7 +5,7 @@
 	<artifactId>snappy</artifactId>-->
 	<groupId>org.xerial.snappy</groupId>
 	<artifactId>snappy-nudge</artifactId>
-	<version>1.1.0.1.0</version>
+        <version>1.1.1-M1-jdk5-SNAPSHOT</version>
 	<description>snappy-java: A fast compression/decompression library</description>
 	<packaging>jar</packaging>
 	
